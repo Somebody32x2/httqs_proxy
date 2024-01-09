@@ -1,6 +1,10 @@
 {
   "dependencies": {
+    "express": "^4.18.2",
     "http-proxy": "^1.18.1",
     "socks5": "^1.0.1"
+  },
+  "devDependencies": {
+    "sslkeylog": "^0.2.2"
   }
 }
