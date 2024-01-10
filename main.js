@@ -1,6 +1,6 @@
-var net = require('net'),
-    socks = require('socks5/socks'),
-    info = console.log.bind(console);
+const net = require('net')
+const socks = require('socks5/socks')
+info = console.log.bind(console);
 
 // Create server
 // The server accepts SOCKS connections. This particular server acts as a proxy.
