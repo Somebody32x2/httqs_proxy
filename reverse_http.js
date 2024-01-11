@@ -1,7 +1,27 @@
 // https://medium.com/@nimit95/a-simple-http-https-proxy-in-node-js-4eb0444f38fc
 const net = require('net');
+const crypto = require("crypto");
+const kyber = require('crystals-kyber');
 
-const server = net.createServer();
+const server = net.createServer()
+
+class Client {
+    constructor() {
+        this.state = "UNKNOWN"
+    }
+    initalize() {
+        while (true) {
+            this.id = crypto.randomUUID();
+            if (!clients[this.id]) break;
+        }
+        this.state = "SUPPORTED"
+        let keys = kyber.KeyGen768();
+        this.publicKey = keys[0];
+        this.symmetricKey = keys[1];
+        this.lastUsed = Date.now()
+        this.created = Date.now()
+    }
+}
 server.on('connection', (clientToProxySocket) => {
     // console.log('Client Connected To Proxy');
 });
@@ -16,10 +36,22 @@ server.listen(8889, () => {
     console.log('Server running at http://localhost:' + 8889);
 });
 server.on('connection', (clientToProxySocket) => {
+    clientToProxySocket.client = new Client();
     // console.log('Client Connected To Proxy');
     // We need only the data once, the starting packet
     clientToProxySocket.on('data', (data) => {
         console.log(data.toString())
+        if (data.toString().includes("HTTQS-HELLO")) {
+            clientToProxySocket.client.initalize()
+            clientToProxySocket.write("HTTQS-PK:" + JSON.stringify(clientToProxySocket.client.publicKey) + "\r\n") // TODO: Use hex, b64, or raw instead of JSON string
+        } else if (clientToProxySocket.client.state === "SUPPORTED" && data.toString().includes("HTTQS-HANDSHAKE-MESSAGE:")) {
+            clientToProxySocket.client.shared_secret = kyber.Decrypt768(data.toString().split("HTTQS-HANDSHAKE-MESSAGE:")[1], clientToProxySocket.client.symmetricKey)
+            clientToProxySocket.client.state = "READY"
+            clientToProxySocket.client.iv = crypto.getRandomValues(new Uint8Array(16));
+            clientToProxySocket.client.key = crypto.subtle.importKey("raw", clientToProxySocket.client.shared_secret, "AES-GCM", true, ["encrypt", "decrypt"])
+            clientToProxySocket.client.lastUsed = Date.now()
+            clientToProxySocket.write("HTTQS-IV:" + Object.values(clientToProxySocket.client.iv).join(",") + "\r\n"); // TODO: Use hex, b64, or raw instead of JSON string
+        }
             // let isTLSConnection = data.toString().indexOf('CONNECT') !== -1;
             // // console.log(data.toString())
             //

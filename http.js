@@ -52,9 +52,9 @@ server.on('connection', (clientToProxySocket) => {
             }
             console.log(`Connecting to ${serverAddress}:${serverPort}`)
 
+            clientToProxySocket.client = {state: "UNKNOWN"}
             let proxyToHttqsSocket = net.createConnection({
-                host: serverAddress,
-                port: 8889
+                host: serverAddress, port: 8889
             });
             proxyToHttqsSocket.on('error', (data) => {
                 // console.log(data.toString())
@@ -64,13 +64,24 @@ server.on('connection', (clientToProxySocket) => {
                 proxyToHttqsSocket.write("HTTQS-HELLO")
             });
             proxyToHttqsSocket.on("data", (data) => {
+                if (data.toString().includes("HTTQS-PK:")) {
+                    clientToProxySocket.client.publicKey = JSON.parse(data.toString().split("HTTQS-PK:")[1])
+                    clientToProxySocket.client.symmetricKey = kyber.Encrypt768(clientToProxySocket.client.publicKey, kyber.GenerateKeyPair())
+                    clientToProxySocket.client.state = "SUPPORTED"
+                    clientToProxySocket.write("HTTQS-HANDSHAKE-MESSAGE:" + kyber.Encrypt768(clientToProxySocket.client.publicKey, clientToProxySocket.client.symmetricKey))
 
+                    clientToProxySocket.client.initalize()
+                } else if (data.toString().includes("HTTQS-IV:")) {
+                    clientToProxySocket.client.iv = data.toString().split("HTTQS-IV:")[1].split(",").map((x) => parseInt(x))
+                    clientToProxySocket.client.key = crypto.subtle.importKey("raw", clientToProxySocket.client.shared_secret, "AES-GCM", true, ["encrypt", "decrypt"])
+                    clientToProxySocket.client.lastUsed = Date.now()
+                    clientToProxySocket.write("HTTQS-IV:" + Object.values(clientToProxySocket.client.iv).join(",") + "\r\n"); // TODO: Use hex, b64, or raw instead of JSON string
+                }
             });
 
 
             let proxyToServerSocket = net.createConnection({
-                host: serverAddress,
-                port: serverPort
+                host: serverAddress, port: serverPort
             }, () => {
                 // console.log('PROXY TO SERVER SET UP');
                 // console.log(serverAddress)
