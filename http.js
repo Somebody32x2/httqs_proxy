@@ -116,11 +116,11 @@ server.on('connection', (clientToProxySocket) => {
                 clientToProxySocket.on("data", handleClientHTTQSData);
 
             } else if (proxyToHttqsSocket.client.state === "READY") {
-                console.dir({
-                    iv: proxyToHttqsSocket.client.iv,
-                    key: await crypto.subtle.exportKey("jwk", proxyToHttqsSocket.client.key),
-                    data: data
-                })
+                // console.dir({
+                //     iv: proxyToHttqsSocket.client.iv,
+                //     key: await crypto.subtle.exportKey("jwk", proxyToHttqsSocket.client.key),
+                //     data: data
+                // })
                 console.log("GOT HTTQS SERVER DATA; DECRYPTING BYTES");
                 let decrypted = await crypto.subtle.decrypt({
                     name: "AES-GCM", iv: proxyToHttqsSocket.client.iv
