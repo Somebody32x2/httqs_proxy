@@ -10,6 +10,8 @@ const MESSAGE_U8_LABEL = new TextEncoder().encode("HTTQS-HANDSHAKE-MESSAGE:");
 
 const MTU = 14000;
 
+let socketId = 0;
+
 class Client {
     constructor() {
         this.state = "UNKNOWN"
@@ -39,8 +41,9 @@ server.listen(8889, () => {
 server.on('connection', (clientToProxySocket) => {
     clientToProxySocket.client = new Client();
     let proxyToServerSocket = undefined;
+    clientToProxySocket.id = socketId++;
     clientToProxySocket.on('data', async (data) => {
-        console.log("RECIEVED DATA FROM CLIENT:" + data.toString().slice(0, 40) + "... (" + data.toString().length + " bytes)")
+        console.log("RECIEVED DATA FROM CLIENT:" + data.toString().slice(0, 40) + "... (" + data.toString().length + " bytes)" + `(C${clientToProxySocket.id})`);
         if (data.toString().includes("HTTQS-HELLO")) {
             // This is a client that supports HTTQS, get ready to set up encryption using Kyber768
             clientToProxySocket.client.initalize()
@@ -66,12 +69,14 @@ server.on('connection', (clientToProxySocket) => {
             u8Message.set(clientToProxySocket.client.iv, IV_U8_LABEL.byteLength);
             clientToProxySocket.write(u8Message);
 
+            console.log(`COMPLETED HTTQS HANDSHAKE (C${clientToProxySocket.id})`);
+
         } else if (clientToProxySocket.client.state === "READY") {
             // console.dir({iv: clientToProxySocket.client.iv, key: await crypto.subtle.exportKey("jwk", clientToProxySocket.client.key), data: data})
             let decrypted = await crypto.subtle.decrypt({
                 name: "AES-GCM", iv: clientToProxySocket.client.iv
             }, clientToProxySocket.client.key, data);
-            console.log("DECRYPTED BYTES: " + new TextDecoder().decode(decrypted).slice(0, 40) + "... (" + decrypted.toString().length + " bytes)\n");
+            console.log("DECRYPTED BYTES: " + new TextDecoder().decode(decrypted).slice(0, 40) + "... (" + decrypted.toString().length + " bytes) (C" + clientToProxySocket.id + ")\n");
 
             if (!proxyToServerSocket) {
                 // First time; connect to the server using the decrypted data (this is likely this same server but with a different port)
@@ -103,7 +108,7 @@ server.on('connection', (clientToProxySocket) => {
                         serverAddress = serverAddress.split(':')[0];
                     }
                 }
-                console.log(`Connecting to ${serverAddress}:${serverPort}`)
+                console.log(`Connecting to ${serverAddress}:${serverPort} (C${clientToProxySocket.id})`)
                 proxyToServerSocket = net.createConnection({
                     host: serverAddress, port: serverPort
                 }, async () => {
@@ -125,29 +130,30 @@ server.on('connection', (clientToProxySocket) => {
                     }
 
                     proxyToServerSocket.on('error', (err) => {
-                        console.log(`Error from server ${serverAddress}:${serverPort} : ${err}`);
+                        console.log(`Error from server ${serverAddress}:${serverPort} : ${err} (C${clientToProxySocket.id})`);
                     });
 
                     // On receiving data from the server send it to the client encrypted
                     proxyToServerSocket.on('data', async (data) => {
-                        console.log("GOT SERVER DATA; ENCRYPTING BYTES: " + data.toString().slice(0, 40) + "... (" + data.toString().length + " bytes)\n");
+                        console.log("GOT SERVER DATA; ENCRYPTING BYTES: " + data.toString().slice(0, 40) + "... (" + data.toString().length + " bytes) (C" + clientToProxySocket.id + ")\n");
                         for (let i = 0; i < data.length; i += MTU) {
                             let encrypted = await crypto.subtle.encrypt({
                                 name: "AES-GCM", iv: clientToProxySocket.client.iv
                             }, clientToProxySocket.client.key, data.slice(0, MTU));
                             data = data.slice(MTU);
-                            // console.dir({
-                            //     iv: clientToProxySocket.client.iv,
-                            //     key: await crypto.subtle.exportKey("jwk", clientToProxySocket.client.key),
-                            //     data: new Uint8Array(encrypted)
-                            // })
+                            console.dir({
+                                iv: clientToProxySocket.client.iv,
+                                key: await crypto.subtle.exportKey("jwk", clientToProxySocket.client.key),
+                                data: new Uint8Array(encrypted),
+                                client: clientToProxySocket.id,
+                            })
                             clientToProxySocket.write(new Uint8Array(encrypted));
                         }
                     });
                 });
             } else {
                 // Already connected to the server, just write the decrypted data
-                console.log(`SENDING DECRTYPTED DATA TO SERVER`)
+                console.log(`SENDING DECRTYPTED DATA TO SERVER (C${clientToProxySocket.id})`);
                 proxyToServerSocket.write(new Uint8Array(decrypted));
             }
             // clientToProxySocket.write(new Uint8Array(decrypted));
